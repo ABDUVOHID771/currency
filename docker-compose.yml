@@ -1,0 +1,95 @@
+version: '3.7'
+services:
+
+  rabbitmq:
+    image: rabbitmq:latest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    restart: always
+    networks:
+      - currency-compose-network
+
+  currency-eureka:
+    image: currency-eureka:latest
+    #    build:
+    #      context: netflix-eureka-naming-server
+    #      dockerfile: Dockerfile
+    ports:
+      - "8761:8761"
+    restart: always
+    networks:
+      - currency-compose-network
+
+  zipkin-server:
+    image: openzipkin/zipkin
+    container_name: zipkin
+    environment:
+      STORAGE_TYPE: mem
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "9411:9411"
+    restart: always
+    depends_on:
+      - rabbitmq
+    networks:
+      - currency-compose-network
+
+  currency-zuul:
+    image: currency-zuul:latest
+    #      build:
+    #        context: netflix-zuul-api-gateway-server
+    #        dockerfile: Dockerfile
+    environment:
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "8765:8765"
+    restart: always
+    depends_on:
+      - currency-eureka
+      - rabbitmq
+      - zipkin-server
+    networks:
+      - currency-compose-network
+
+  currency-exchange-service:
+    image: currency-exchange-service:latest
+    #    build:
+    #      context: currency-exchange-service
+    #      dockerfile: Dockerfile
+    environment:
+      #      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://currency-eureka:192.168.99.100:8761/eureka
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "8000:8000"
+    restart: always
+    depends_on:
+      - currency-eureka
+      - rabbitmq
+      - zipkin-server
+    networks:
+      - currency-compose-network
+
+  currency-conversion-service:
+    image: currency-conversion:latest
+    #    build:
+    #      context: currency-conversion-service
+    #      dockerfile: Dockerfile
+    ports:
+      - "8100:8100"
+    restart: always
+    environment:
+      #      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://192.168.99.100:8761
+      #      CURRENCY_EXCHANGE_URI: http://currency-exchange-service:8000
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - currency-exchange-service
+      - currency-eureka
+      - rabbitmq
+      - zipkin-server
+    networks:
+      - currency-compose-network
+
+# Networks to be created to facilitate communication between containers
+networks:
+  currency-compose-network:
